@@ -656,7 +656,7 @@ createApp({
     const warningsCopied   = ref(false);
 
     function copyWarningNames() {
-      const text = warnings.value.map(w => w.name).join(', ');
+      const text = warnings.value.map(w => `- ${w.name}`).join('\n');
       navigator.clipboard.writeText(text).then(() => {
         warningsCopied.value = true;
         setTimeout(() => { warningsCopied.value = false; }, 2000);
