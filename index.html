@@ -611,7 +611,8 @@ function computeStockAt(med, atStr) {
 createApp({
   setup() {
     const medications = ref([]);
-    const now = computed(() => localNowDatetimeValue());
+    const now = ref(localNowDatetimeValue());
+    setInterval(() => { now.value = localNowDatetimeValue(); }, 1000);
 
     // ── Persistence ──────────────────────────────────────
     function save() { localStorage.setItem('medtrack_v1', JSON.stringify(medications.value)); }
