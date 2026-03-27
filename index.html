@@ -632,8 +632,8 @@ createApp({
 
         let status = 'ok';
         if (currentStock <= 0 || daysLeft === 0) status = 'critical';
-        else if (daysLeft !== null && daysLeft <= med.warnThreshold * 0.4) status = 'critical';
-        else if (daysLeft !== null && daysLeft <= med.warnThreshold) status = 'warn';
+        else if (daysLeft !== null && daysLeft < med.warnThreshold * 0.4) status = 'critical';
+        else if (daysLeft !== null && daysLeft < med.warnThreshold) status = 'warn';
 
         const refDays = med.warnThreshold > 0 ? med.warnThreshold * 4 : 60;
         const barWidth = daysLeft !== null
