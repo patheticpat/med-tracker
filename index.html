@@ -227,13 +227,32 @@
   <main>
 
     <div v-if="warnings.length" class="warnings-banner">
-      <h3>⚠ Stock Warnings</h3>
-      <ul>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+        <h3 style="margin-bottom:0">⚠ Stock Warnings</h3>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <button class="btn btn-sm" style="color:var(--warn);border:1.5px solid var(--warn);background:transparent;padding:.2rem .6rem;font-size:.75rem" @click="copyWarningNames">
+            {{ warningsCopied ? '✓ Copied' : '⎘ Copy list' }}
+          </button>
+          <button class="btn btn-sm" style="color:var(--warn);border:1.5px solid var(--warn);background:transparent;padding:.2rem .6rem;font-size:.75rem" @click="warningsExpanded = !warningsExpanded">
+            {{ warningsExpanded ? '▲ Less' : '▼ Details' }}
+          </button>
+        </div>
+      </div>
+      <!-- Simple: plain name list -->
+      <div v-if="!warningsExpanded" style="font-size:.9rem;line-height:1.8;color:var(--text)">
+        <span v-for="(w, i) in warnings" :key="w.id">
+          <span :style="{ color: w.level === 'critical' ? 'var(--danger)' : 'var(--warn)', fontWeight: 600 }">{{ w.name }}</span><span v-if="i < warnings.length - 1">, </span>
+        </span>
+      </div>
+      <!-- Detailed: full info list -->
+      <ul v-else>
         <li v-for="w in warnings" :key="w.id" :class="{ critical: w.level === 'critical' }">
           <span>{{ w.level === 'critical' ? '🔴' : '🟡' }}</span>
           <span>
-            <strong>{{ w.name }}</strong> — {{ w.stock.toFixed(1) }} {{ w.unit }} remaining
-            <em v-if="w.daysLeft !== null">(~{{ w.daysLeft }} day{{ w.daysLeft !== 1 ? 's' : '' }})</em>
+            <strong>{{ w.name }}</strong> —
+            <span v-if="w.daysLeft !== null">~{{ w.daysLeft }} day{{ w.daysLeft !== 1 ? 's' : '' }} remaining</span>
+            <span v-else>{{ formatStock(w.stock) }} {{ w.unit }} remaining</span>
+            ({{ formatStock(w.stock) }} {{ w.unit }})
           </span>
         </li>
       </ul>
@@ -268,7 +287,7 @@
         </div>
         <div class="med-card-body">
           <div class="stock-display">
-            <span class="stock-amount" :class="med.status">{{ med.currentStock.toFixed(1) }}</span>
+            <span class="stock-amount" :class="med.status">{{ formatStock(med.currentStock) }}</span>
             <span class="stock-unit-label">{{ med.unit }} in stock</span>
           </div>
           <div class="stock-bar-wrap">
@@ -285,7 +304,7 @@
             </div>
             <div class="med-meta-row">
               <span class="med-meta-label">Warn threshold</span>
-              <span>{{ med.warnThreshold }} days</span>
+              <span>{{ med.warnThreshold }} day{{ med.warnThreshold !== 1 ? 's' : '' }} remaining</span>
             </div>
             <div class="med-meta-row" v-if="med.notes">
               <span class="med-meta-label">Notes</span>
@@ -354,21 +373,31 @@
             <input class="form-input" type="number" min="0" step="0.1" v-model.number="medForm.initialStock" placeholder="Amount on hand" />
           </div>
           <div class="form-group">
-            <label class="form-label">Warn below <span class="required">*</span></label>
-            <input class="form-input" type="number" min="0" v-model.number="medForm.warnThreshold" placeholder="Alert threshold" />
+            <label class="form-label">Warn below (days) <span class="required">*</span></label>
+            <input class="form-input" type="number" min="0" step="1" v-model.number="medForm.warnThreshold" placeholder="e.g. 14" />
           </div>
+        </div>
+        <div class="form-hint" v-if="medForm.warnThreshold > 0 && computedDailyConsumption > 0">
+          Warning triggers at ~{{ (computedDailyConsumption * medForm.warnThreshold).toFixed(1) }} {{ medForm.unit || 'units' }} in stock
         </div>
         <div class="form-group">
           <label class="form-label">Notes</label>
           <textarea class="form-textarea" v-model="medForm.notes" rows="2" placeholder="Optional notes (e.g. take with food, keep refrigerated)"></textarea>
         </div>
       </div>
-      <div class="modal-footer">
-        <button v-if="editingMed" class="btn btn-danger btn-sm" @click="deleteMed(editingMed.id)">Delete</button>
+      <div class="modal-footer" v-if="!confirmingDelete">
+        <button v-if="editingMed" class="btn btn-danger btn-sm" @click="confirmingDelete = true">Delete</button>
         <button class="btn btn-outline" @click="showMedForm = false">Cancel</button>
         <button class="btn btn-primary" @click="saveMed" :disabled="!medFormValid">
           {{ editingMed ? 'Save Changes' : 'Add Medication' }}
         </button>
+      </div>
+      <div class="modal-footer" v-else style="justify-content:space-between;align-items:center">
+        <span style="font-size:.85rem;color:var(--danger);font-weight:500">Delete this medication and all its history?</span>
+        <div style="display:flex;gap:.5rem">
+          <button class="btn btn-outline btn-sm" @click="confirmingDelete = false">Cancel</button>
+          <button class="btn btn-danger btn-sm" @click="deleteMed(editingMed.id)">Yes, delete</button>
+        </div>
       </div>
     </div>
   </div>
@@ -394,7 +423,7 @@
           <input class="form-input" v-model="eventForm.note" placeholder="e.g. new box from pharmacy" />
         </div>
         <div class="form-hint" v-if="activeModal">
-          Stock after restock: <strong>{{ (getStockAt(activeModal, eventForm.datetime) + (eventForm.amount||0)).toFixed(1) }} {{ activeModal.unit }}</strong>
+          Stock after restock: <strong>{{ formatStock(getStockAt(activeModal, eventForm.datetime) + (eventForm.amount||0)) }} {{ activeModal.unit }}</strong>
         </div>
       </div>
       <div class="modal-footer">
@@ -413,7 +442,7 @@
       </div>
       <div class="modal-body">
         <p style="font-size:.85rem;color:var(--text2)">
-          Calculated stock right now: <strong>{{ activeModal ? getStockAt(activeModal, now).toFixed(1) : 0 }} {{ activeModal?.unit }}</strong><br>
+          Calculated stock right now: <strong>{{ activeModal ? formatStock(getStockAt(activeModal, now)) : 0 }} {{ activeModal?.unit }}</strong><br>
           Enter the amount you actually have. A correction entry records the difference.
         </p>
         <div class="form-group">
@@ -429,7 +458,7 @@
           <input class="form-input" v-model="eventForm.note" placeholder="e.g. miscounted earlier, dropped some" />
         </div>
         <div class="form-hint" v-if="activeModal && eventForm.amount !== null && eventForm.amount !== ''">
-          Difference from calculated: <strong>{{ (eventForm.amount - getStockAt(activeModal, eventForm.datetime)).toFixed(1) }} {{ activeModal.unit }}</strong>
+          Difference from calculated: <strong>{{ formatStock(eventForm.amount - getStockAt(activeModal, eventForm.datetime)) }} {{ activeModal.unit }}</strong>
         </div>
       </div>
       <div class="modal-footer">
@@ -522,7 +551,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
 <script>
-const { createApp, ref, computed, reactive, watch, onMounted, nextTick } = Vue;
+const { createApp, ref, computed, reactive, watch, onMounted } = Vue;
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
@@ -563,13 +592,19 @@ function computeStockAt(med, atStr) {
 
   for (const ev of events) {
     if (ev.ts > at) break;
-    if (lastTs) stock -= Math.max(0, ev.ts - lastTs) / msDay * rate;
+    if (lastTs) {
+      const completeDays = Math.floor(Math.max(0, ev.ts - lastTs) / msDay);
+      stock -= completeDays * rate;
+    }
     if (ev.type === 'correction') stock = ev.amount;
     else stock += ev.amount;
     lastTs = ev.ts;
   }
 
-  if (lastTs) stock -= Math.max(0, at - lastTs) / msDay * rate;
+  if (lastTs) {
+    const completeDays = Math.floor(Math.max(0, at - lastTs) / msDay);
+    stock -= completeDays * rate;
+  }
   return stock;
 }
 
@@ -596,11 +631,14 @@ createApp({
         const daysLeft = rate > 0 ? Math.floor(currentStock / rate) : null;
 
         let status = 'ok';
-        if (daysLeft <= med.warnThreshold * 0.4) status = 'critical';
-        else if (daysLeft <= med.warnThreshold) status = 'warn';
+        if (currentStock <= 0 || daysLeft === 0) status = 'critical';
+        else if (daysLeft !== null && daysLeft <= med.warnThreshold * 0.4) status = 'critical';
+        else if (daysLeft !== null && daysLeft <= med.warnThreshold) status = 'warn';
 
-        const ref4x = med.warnThreshold > 0 ? med.warnThreshold * 4 : 1;
-        const barWidth = Math.min(100, Math.max(0, (daysLeft / ref4x) * 100));
+        const refDays = med.warnThreshold > 0 ? med.warnThreshold * 4 : 60;
+        const barWidth = daysLeft !== null
+          ? Math.min(100, Math.max(0, (daysLeft / refDays) * 100))
+          : (currentStock > 0 ? 100 : 0);
 
         const freqLabel = `${med.frequencyCount > 1 ? med.frequencyCount + 'x / ' : ''}per ${med.frequencyPeriod}`;
 
@@ -613,6 +651,17 @@ createApp({
         .filter(m => m.status !== 'ok')
         .map(m => ({ id: m.id, name: m.name, unit: m.unit, stock: m.currentStock, daysLeft: m.daysLeft, level: m.status }))
     );
+
+    const warningsExpanded = ref(false);
+    const warningsCopied   = ref(false);
+
+    function copyWarningNames() {
+      const text = warnings.value.map(w => w.name).join(', ');
+      navigator.clipboard.writeText(text).then(() => {
+        warningsCopied.value = true;
+        setTimeout(() => { warningsCopied.value = false; }, 2000);
+      });
+    }
 
     function getStockAt(med, dtStr) {
       return Math.max(0, computeStockAt(med, dtStr || now.value));
@@ -628,14 +677,15 @@ createApp({
     const activeModal      = ref(null);
     const ieTab            = ref('export');
     const importError      = ref('');
+    const confirmingDelete = ref(false);
 
-    const blankMedForm  = () => ({ name: '', dosagePerEvent: 1, unit: 'pills', frequencyCount: 1, frequencyPeriod: 'day', initialStock: 0, warnThreshold: 10, notes: '' });
+    const blankMedForm  = () => ({ name: '', dosagePerEvent: 1, unit: 'pills', frequencyCount: 1, frequencyPeriod: 'day', initialStock: 0, warnThreshold: 14, notes: '' });
     const blankEvForm   = () => ({ amount: null, datetime: localNowDatetimeValue(), note: '' });
     const medForm   = reactive(blankMedForm());
     const eventForm = reactive(blankEvForm());
 
-    function openAddMed()     { Object.assign(medForm, blankMedForm()); editingMed.value = null; showMedForm.value = true; }
-    function openEditMed(med) { Object.assign(medForm, { name: med.name, dosagePerEvent: med.dosagePerEvent, unit: med.unit, frequencyCount: med.frequencyCount, frequencyPeriod: med.frequencyPeriod, initialStock: med.initialStock, warnThreshold: med.warnThreshold, notes: med.notes || '' }); editingMed.value = med; showMedForm.value = true; }
+    function openAddMed()     { Object.assign(medForm, blankMedForm()); editingMed.value = null; confirmingDelete.value = false; showMedForm.value = true; }
+    function openEditMed(med) { Object.assign(medForm, { name: med.name, dosagePerEvent: med.dosagePerEvent, unit: med.unit, frequencyCount: med.frequencyCount, frequencyPeriod: med.frequencyPeriod, initialStock: med.initialStock, warnThreshold: med.warnThreshold, notes: med.notes || '' }); editingMed.value = med; confirmingDelete.value = false; showMedForm.value = true; }
     function openRestock(med) { activeModal.value = med; Object.assign(eventForm, blankEvForm()); showRestock.value = true; }
     function openCorrection(med) { activeModal.value = med; Object.assign(eventForm, blankEvForm()); showCorrection.value = true; }
     function openHistory(med) { activeModal.value = medications.value.find(m => m.id === med.id); showHistory.value = true; }
@@ -658,16 +708,16 @@ createApp({
         if (idx !== -1) medications.value[idx] = { ...medications.value[idx], name: medForm.name, dosagePerEvent: medForm.dosagePerEvent, unit: medForm.unit, frequencyCount: medForm.frequencyCount, frequencyPeriod: medForm.frequencyPeriod, initialStock: medForm.initialStock, warnThreshold: medForm.warnThreshold, notes: medForm.notes };
         toast('Medication updated.');
       } else {
-        medications.value.push({ id: uid(), createdAt: new Date().toISOString(), name: medForm.name, dosagePerEvent: medForm.dosagePerEvent, unit: medForm.unit, frequencyCount: medForm.frequencyCount, frequencyPeriod: medForm.frequencyPeriod, initialStock: medForm.initialStock, warnThreshold: medForm.warnThreshold, notes: medForm.notes, events: [] });
+        medications.value.push({ id: uid(), createdAt: localNowDatetimeValue(), name: medForm.name, dosagePerEvent: medForm.dosagePerEvent, unit: medForm.unit, frequencyCount: medForm.frequencyCount, frequencyPeriod: medForm.frequencyPeriod, initialStock: medForm.initialStock, warnThreshold: medForm.warnThreshold, notes: medForm.notes, events: [] });
         toast('Medication added.', 'success');
       }
       showMedForm.value = false;
     }
 
     function deleteMed(id) {
-      if (!confirm('Delete this medication and all its history? This cannot be undone.')) return;
       medications.value = medications.value.filter(m => m.id !== id);
       showMedForm.value = false;
+      confirmingDelete.value = false;
       toast('Medication deleted.');
     }
 
@@ -675,11 +725,8 @@ createApp({
       const med = medications.value.find(m => m.id === activeModal.value.id);
       if (!med) return;
       med.events.push({ id: uid(), type, amount: Number(eventForm.amount), datetime: eventForm.datetime, note: eventForm.note });
-      nextTick(() => {
       if (type === 'restock') { showRestock.value = false; toast('Restock recorded.', 'success'); }
       else { showCorrection.value = false; toast('Stock corrected.', 'success'); }
-      }
-      );
     }
 
     function deleteEvent(med, evId) {
@@ -717,7 +764,6 @@ createApp({
       try {
         const data = JSON.parse(text);
         if (!data.medications || !Array.isArray(data.medications)) throw new Error('Invalid backup file — medications array not found.');
-        if (!confirm(`Import ${data.medications.length} medication(s)? This replaces all current data.`)) return;
         medications.value = data.medications;
         showImportExport.value = false;
         toast(`Imported ${data.medications.length} medication(s).`, 'success');
@@ -735,6 +781,11 @@ createApp({
       setTimeout(() => { toasts.value = toasts.value.filter(t => t.id !== id); }, 2800);
     }
 
+    function formatStock(n) {
+      // Show up to 1 decimal, but drop trailing .0
+      return Number.isFinite(n) ? (+n.toFixed(1)).toString() : '0';
+    }
+
     function formatDatetime(str) {
       if (!str) return '';
       const d = new Date(str);
@@ -744,13 +795,14 @@ createApp({
 
     return {
       medications, medicationsWithStock, warnings, now, getStockAt,
+      warningsExpanded, warningsCopied, copyWarningNames,
       showMedForm, showRestock, showCorrection, showHistory, showImportExport,
       editingMed, activeModal, ieTab, importError,
       medForm, eventForm, computedDailyConsumption, medFormValid, sortedEvents, exportPreview,
       openAddMed, openEditMed, openRestock, openCorrection, openHistory,
       saveMed, deleteMed, addEvent, deleteEvent,
       exportData, handleFileSelect, handleDrop,
-      formatDatetime, toasts
+      formatStock, formatDatetime, toasts, confirmingDelete
     };
   }
 }).mount('#app');
